@@ -1,109 +1,139 @@
+# IT Support Agentic RAG Engine
 
- # IT Support Agentic RAG Engine
-
-This is an intelligent orchestration system designed to automate Level 1 (L1) IT support. This **agentic RAG (Retrieval-Augmented Generation)** system autonomously resolves high-volume, low-complexity requests such as **policy inquiries and technical troubleshooting** while intelligently **triaging complex issues to human agents with full context**.
-
-By moving beyond traditional keyword-matching chatbots, this engine utilizes semantic reasoning to disambiguate vague user inputs and extract actionable instructions from dense corporate documentation.
+An intelligent, multi-agent IT support system built on **n8n** that autonomously resolves Tier-1 employee requests and triages complex issues to human agents, reducing operational load while maintaining enterprise-grade safety controls.
 
 ---
 
-## Key Features
+## Overview
 
-* **Semantic RAG Pipeline:** Processes complex, multi-page PDFs (handbooks, security policies) into vectorized "knowledge flashcards" for precise information retrieval.
+This system uses **Semantic Reasoning + Retrieval-Augmented Generation (RAG)** to understand employee intent, retrieve accurate policy information, and take real actions, all while keeping a human in the loop for sensitive operations.
 
-
-* **Agentic Routing:** A "brain" powered by Llama 3.3 that decides whether to answer a question directly, search the knowledge base, or trigger a technical workflow.
-
-
-* **Human-in-the-Loop (HITL) Safety:** High-stakes actions, such as ticket creation or password resets, require an asynchronous confirmation signal from a human supervisor before execution.
-
-
-* **Automated QA & Evaluation:** An "LLM-as-a-Judge" framework that mathematically scores agent responses against ground-truth data to ensure accuracy and minimize hallucinations.
-
+**Primary Users:**
+- **Internal Employees** — Get instant answers to IT and policy questions without waiting hours for ticket responses.
+- **IT Service Desk Managers** — Deflect high-volume Tier-1 tickets to focus human agents on complex infrastructure issues.
 
 ---
 
-## System Architecture
+## Architecture
 
 ![Architecture Diagram](https://github.com/likhithaguggilla/enterprise-IT-support-autonomy-AI-engine/blob/main/assets/system-architecture.png)
 
 
----
-
-### Tech Stack
-
-* **Orchestration:** n8n (Self-hosted) 
-
-
-* **LLMs:** Llama 3.3-70b (Reasoning) & Llama 3-8b (Speed) via Groq 
-
-
-* **Vector Database:** Pinecone (Serverless) 
-
-
-* **Embeddings:** Hugging Face (`all-MiniLM-L6-v2`) 
-
-
-* **Integrations:** Google Drive (Ingestion), Google Sheets (Database), and Gmail (Approvals)
-
+The architecture follows a **Modular Multi-Workflow** design:
+- `02_Support_Agent` — Main router and conversational interface
+- `03_Tool_Create_Ticket` — Webhook-based ticket creation middleware
+- `04_Ticket_Approver` — Human approval gate → writes to database
+- `05_Agent_Evaluation` — Automated LLM-as-a-Judge QA pipeline
 
 ---
 
-## System Boundaries & Behavior
+## Tech Stack
 
-To ensure enterprise-grade reliability, the agent operates under strict constraints:
+| Component | Technology | Rationale |
+|---|---|---|
+| Orchestration | [n8n](https://n8n.io) (Self-Hosted) | Native LangChain support, granular data control |
+| LLM | Llama 3.3 70B via [Groq](https://groq.com) | Ultra-low latency; open-source, enterprise-safe |
+| Vector Database | [Pinecone](https://pinecone.io) | Serverless, scalable semantic search |
+| Embedding Model | `sentence-transformers/all-MiniLM-L6-v2` (HuggingFace) | Efficient 384-dim semantic embeddings |
+| Document Storage | Google Drive | Cloud-native; bypasses Docker isolation limits |
+| Ticket Database | Google Sheets (mock Jira) | Lightweight proof-of-concept persistence |
+| Safety Layer | Gmail + Webhooks | Async human-in-the-loop approval flow |
 
-* **Scope:** Limited exclusively to IT support and general company policy; it refuses queries regarding salaries or personal legal advice.
+---
+
+## How It Works
+
+#### Phase 1 — Knowledge Ingestion (ETL Pipeline)
+PDF documents are ingested via a 4-step pipeline:
+1. **Extract** — Pull PDFs from Google Drive
+2. **Chunk** — Split into 500-char segments (50-char overlap) using Recursive Text Splitter
+3. **Embed** — Convert chunks to 384-dim vectors via HuggingFace
+4. **Index** — Store in Pinecone `support-agent` index for fast retrieval
+
+#### Phase 2 — Agentic RAG
+A **Tools Agent (ReAct Framework)** decides *when* to query the vector database vs. when to respond conversationally. The agent retrieves the top-4 most relevant document chunks and synthesizes a grounded response.
+
+#### Phase 3 — Action Layer with HITL
+When a user requests an action (e.g., creating a support ticket), the agent:
+1. Recognizes actionable intent and triggers the ticket sub-workflow
+2. Sends a **secure approval email** to a supervisor with a webhook link
+3. Upon supervisor click, the ticket is written to Google Sheets and the user receives confirmation
+
+This **"Fire and Forget"** pattern keeps the UX responsive (< 2s response time) while maintaining human oversight.
+
+#### Phase 4 — Automated Evaluation
+A dedicated QA workflow (`05_Agent_Evaluation`) runs structured test cases and uses an **LLM-as-a-Judge** to score responses on accuracy and tone (1–5 scale).
+
+---
+## Knowledge Base Documents
+
+The system is tested against three real-world enterprise-style documents:
+
+| Type | Document | Purpose |
+|---|---|---|
+| Policy (Text-heavy) | [Springfield College Information Security Policy](https://springfield.edu/sites/default/files/information-security-policy-v202504015_final.pdf) | Data classification reasoning |
+| Handbook (Large structured doc) | [Mississippi State Employee Handbook](https://www.eab.ms.gov/sites/eab/files/EAB-pdfs/FY%202025%20Employee%20Handbook%20with%20cover.pdf) | Needle-in-haystack retrieval |
+| Technical Guide | [University of Surrey IT Welcome Booklet](https://my.surrey.ac.uk/sites/default/files/2024-01/it-welcome-booklet.pdf) | Step-by-step instructional answers |
+
+---
 
 
-* **"I Don't Know" Protocol:** If retrieval confidence falls below 75%, the agent automatically offers to escalate to a human expert rather than risking a hallucination.
+## Test Results
 
-
-* **Recency Weighting:** The RAG pipeline prioritizes the most recent documentation (e.g., 2025 policies over 2023) to prevent outdated responses.
+| Test | Query Type | Result |
+|---|---|---|
+| Fact Retrieval | "What is 'Yes-Hybrid' telework status?" |  PASS |
+| Policy Constraint | "Can I use my state email for personal social media?" | PASS |
+| Complex Logic | "Minimum leave I must retain to donate?" | PASS |
+| Table Math | "Leave hours for 5 years of service?" | Hallucination — LLM interpolated tabular data |
+| End-to-End Ticket Flow | "My VPN keeps rejecting my password" | PASS |
 
 
 
 ---
 
-## Engineering Challenges & Solutions
+## Safety & Guardrails
 
-* **Asynchronous UX:** Solved "hanging" chat interfaces by decoupling ticket requests from execution, allowing the agent to confirm the request immediately while a background worker handles approvals.
-
-
-* **Deterministic Output:** Prevented the LLM from "inventing" fake ticket IDs by using an "Edit Fields" node to force strict string returns for specific actions.
-
-
-* **Complex Data Handling:** Addressed table-reading hallucinations by identifying the need for future "Code Interpreter" tools or CSV pre-processing for heavy tabular data.
-
-
+- **Scope Enforcement** — Agent refuses questions outside IT Support and Company Policy (no salary, legal, or personal queries)
+- **"I Don't Know" Protocol** — If RAG confidence is below threshold, the agent escalates rather than hallucinating an answer
+- **Prompt Injection Defense** — System prompt uses rigid delimiter strategy; action nodes have secondary logic checks independent of LLM output
+- **HITL Gate** — No write actions (ticket creation, password resets) execute without explicit human approval
+- **Recency Weighting** — Newer documents are prioritized when conflicting policy versions exist in the vector store
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
+- Docker (for self-hosted n8n)
+- Pinecone account
+- Groq API key
+- HuggingFace account (with Inference token)
+- Google Cloud project (for Sheets + Drive + Gmail OAuth)
 
-* **Docker:** To host the n8n environment.
+### Running n8n
 
+```bash
+docker start n8n
+```
 
-* **API Keys:** Groq (Inference), Pinecone (Vector Store), and Hugging Face (Embeddings).
+n8n UI available at: `http://localhost:5678`
 
-
-* **Google Cloud Console:** Configured with Client IDs for Drive and Sheets access.
-
-
-
-### Deployment
-
-1. **Environment Setup:** Start n8n using Docker.
-2. **Knowledge Ingestion:** Run the **Phase 1 ETL Pipeline** to download and vectorize your policy documentation into Pinecone.
-3. **Agent Activation:** Deploy the **Phase 2 Inference Layer** to enable chat-based retrieval.
-4. **Action Layer Configuration:** Connect your Gmail and Google Sheets to the **Phase 3 Tool Workflows** for ticket logging.
-
-
+### Configuration
+Set the following credentials inside n8n:
+- **Groq** — LLM inference (model: `llama-3.3-70b-versatile`)
+- **Pinecone** — Vector store (index: `support-agent`)
+- **HuggingFace** — Fine-Grained Inference Token (embedding model)
+- **Google OAuth** — Drive, Sheets, and Gmail access
 
 ---
 
+## Success Metrics (KPIs)
 
+| Metric | Description |
+|---|---|
+| **Deflection Rate** | % of issues fully resolved by AI without human intervention |
+| **Retrieval Accuracy** | % of correct document chunks surfaced for known queries |
+| **Hallucination Rate** | % of incorrect answers generated (Target: < 1%) |
 
-
+---
